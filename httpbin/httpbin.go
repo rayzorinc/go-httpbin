@@ -159,7 +159,7 @@ var _ http.Handler = &HTTPBin{}
 
 // Handler returns an http.Handler that exposes all HTTPBin endpoints
 func (h *HTTPBin) Handler() http.Handler {
-	mux := http.NewServeMux()
+	mux := newOpenAPIMux()
 
 	// Endpoints restricted to specific methods
 	mux.HandleFunc("DELETE /delete", h.RequestWithBody)
@@ -176,7 +176,7 @@ func (h *HTTPBin) Handler() http.Handler {
 	// Endpoints that accept any methods
 	mux.HandleFunc("/absolute-redirect/{numRedirects}", h.AbsoluteRedirect)
 	mux.HandleFunc("/anything", h.Anything)
-	mux.HandleFunc("/anything/", h.Anything)
+	mux.HandleFunc("/anything/{anything...}", h.Anything)
 	mux.HandleFunc("/base64/{data}", h.Base64)
 	mux.HandleFunc("/base64/{operation}/{data}", h.Base64)
 	mux.HandleFunc("/basic-auth/{user}/{password}", h.BasicAuth)
@@ -230,6 +230,8 @@ func (h *HTTPBin) Handler() http.Handler {
 
 	// existing httpbin endpoints that we do not support
 	mux.HandleFunc("/brotli", notImplementedHandler)
+
+	mux.registerOpenAPI(h.prefix)
 
 	// Apply global middleware
 	var handler http.Handler

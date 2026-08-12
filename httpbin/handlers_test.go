@@ -148,6 +148,7 @@ func TestIndex(t *testing.T) {
 			body := must.ReadAll(t, resp.Body)
 			assert.Contains(t, body, "go-httpbin", "body")
 			assert.Contains(t, body, prefix+"/get", "body")
+			assert.Contains(t, body, prefix+"/openapi.json", "body")
 		})
 
 		t.Run("not found"+prefix, func(t *testing.T) {
@@ -159,6 +160,93 @@ func TestIndex(t *testing.T) {
 			assert.ContentType(t, resp, textContentType)
 		})
 	}
+}
+
+func TestOpenAPI(t *testing.T) {
+	t.Parallel()
+	for _, prefix := range []string{"", "/test-prefix"} {
+		t.Run("ok"+prefix, func(t *testing.T) {
+			t.Parallel()
+			app := setupTestApp(t, WithPrefix(prefix))
+			req := newTestRequest(t, "GET", app.URL(prefix+"/openapi.json"), nil)
+			resp := mustDoRequest(t, app, req)
+
+			assert.StatusCode(t, resp, http.StatusOK)
+			assert.ContentType(t, resp, openAPIContentType)
+
+			var document struct {
+				OpenAPI string                                `json:"openapi"`
+				Servers []map[string]string                   `json:"servers"`
+				Paths   map[string]map[string]json.RawMessage `json:"paths"`
+			}
+			assert.NilError(t, json.NewDecoder(resp.Body).Decode(&document))
+			assert.Equal(t, document.OpenAPI, "3.2.0", "incorrect OpenAPI version")
+
+			serverURL := "/"
+			if prefix != "" {
+				serverURL = prefix
+			}
+			assert.DeepEqual(t, document.Servers, []map[string]string{{"url": serverURL}}, "incorrect server URL")
+
+			assertOpenAPIOperation(t, document.Paths, "/get", "get")
+			assertOpenAPIOperation(t, document.Paths, "/get", "head")
+			assertOpenAPIOperation(t, document.Paths, "/get", "options")
+			assertOpenAPIOperation(t, document.Paths, "/post", "post")
+			assertOpenAPIOperation(t, document.Paths, "/post", "options")
+			assertOpenAPIOperation(t, document.Paths, "/anything/{anything}", "get")
+			assertOpenAPIOperation(t, document.Paths, "/anything/{anything}", "post")
+			assertOpenAPIOperation(t, document.Paths, "/anything/{anything}", "query")
+			assertOpenAPIOperation(t, document.Paths, "/status/{code}", "get")
+			assertOpenAPIPathParameter(t, document.Paths, "/status/{code}", "code")
+			assertOpenAPIOperation(t, document.Paths, "/openapi.json", "get")
+			assertOpenAPIOperation(t, document.Paths, "/openapi.json", "head")
+			assertOpenAPIOperation(t, document.Paths, "/openapi.json", "options")
+		})
+
+		t.Run("method not allowed"+prefix, func(t *testing.T) {
+			t.Parallel()
+			app := setupTestApp(t, WithPrefix(prefix))
+			req := newTestRequest(t, "POST", app.URL(prefix+"/openapi.json"), nil)
+			resp := mustDoRequest(t, app, req)
+			assert.StatusCode(t, resp, http.StatusMethodNotAllowed)
+		})
+	}
+}
+
+func assertOpenAPIOperation(t *testing.T, paths map[string]map[string]json.RawMessage, path, method string) {
+	t.Helper()
+	pathItem, ok := paths[path]
+	if !ok {
+		t.Fatalf("OpenAPI document missing path %q", path)
+	}
+	if _, ok := pathItem[method]; !ok {
+		t.Fatalf("OpenAPI path %q missing method %q", path, method)
+	}
+}
+
+func assertOpenAPIPathParameter(t *testing.T, paths map[string]map[string]json.RawMessage, path, name string) {
+	t.Helper()
+	pathItem, ok := paths[path]
+	if !ok {
+		t.Fatalf("OpenAPI document missing path %q", path)
+	}
+
+	var parameters []struct {
+		Name     string            `json:"name"`
+		In       string            `json:"in"`
+		Required bool              `json:"required"`
+		Schema   map[string]string `json:"schema"`
+	}
+	assert.NilError(t, json.Unmarshal(pathItem["parameters"], &parameters))
+	for _, parameter := range parameters {
+		if parameter.Name == name {
+			assert.Equal(t, parameter.In, "path", "incorrect parameter location")
+			assert.Equal(t, parameter.Required, true, "path parameter must be required")
+			assert.Equal(t, parameter.Schema["type"], "string", "incorrect parameter type")
+			return
+		}
+	}
+	t.Fatalf("OpenAPI path %q missing parameter %q", path, name)
 }
 
 func TestEnv(t *testing.T) {
@@ -590,6 +678,13 @@ func TestAnything(t *testing.T) {
 		assert.StatusCode(t, resp, http.StatusOK)
 		assert.BodyEquals(t, resp, "")
 		assert.Header(t, resp, "Content-Length", "") // responses to HEAD requests should not have a Content-Length header
+	})
+
+	t.Run("QUERY", func(t *testing.T) {
+		t.Parallel()
+		req := newTestRequest(t, "QUERY", app.URL("/anything"), nil)
+		resp := mustDoRequest(t, app, req)
+		assert.StatusCode(t, resp, http.StatusOK)
 	})
 }
 
