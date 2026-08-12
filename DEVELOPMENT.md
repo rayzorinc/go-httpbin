@@ -77,6 +77,18 @@ gofmt, [revive][], and [staticcheck][]:
     make lint
 
 
+## OpenAPI documentation
+
+The checked-in [`docs/openapi.yaml`](docs/openapi.yaml) file is generated from
+the same route registry that serves `/openapi.json` at runtime. Regenerate it
+after adding, removing, or changing a route:
+
+    make openapi
+
+Run `make openapi-check` to verify that the checked-in document is current
+without modifying it. This check is also included in `make lint`.
+
+
 ## Docker images
 
 To build a docker image locally:

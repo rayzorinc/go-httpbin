@@ -14,6 +14,9 @@ REFLEX      := go run github.com/cespare/reflex@v0.3.2
 REVIVE      := go run github.com/mgechev/revive@v1.15.0
 STATICCHECK := go run honnef.co/go/tools/cmd/staticcheck@2026.1
 
+# Generated documentation
+OPENAPI_PATH ?= docs/openapi.yaml
+
 # Host and port to use when running locally via `make run` or `make watch`
 HOST ?= 127.0.0.1
 PORT ?= 8080
@@ -67,14 +70,31 @@ testautobahn:
 .PHONY: autobahntests
 
 
-# ===========================================================================
+# =============================================================================
+# generated documentation
+# =============================================================================
+openapi:
+	mkdir -p $(dir $(OPENAPI_PATH))
+	go run ./cmd/openapi > $(OPENAPI_PATH).tmp
+	mv $(OPENAPI_PATH).tmp $(OPENAPI_PATH)
+.PHONY: openapi
+
+openapi-check:
+	@tmp=$$(mktemp); \
+	trap 'rm -f "$$tmp"' EXIT; \
+	go run ./cmd/openapi > "$$tmp"; \
+	diff -u $(OPENAPI_PATH) "$$tmp"
+.PHONY: openapi-check
+
+# =============================================================================
 # linting/formatting
-# ===========================================================================
+# =============================================================================
 lint:
 	$(GOFUMPT) -d .
 	go vet ./...
 	$(REVIVE) -set_exit_status ./...
 	$(STATICCHECK) ./...
+	$(MAKE) openapi-check
 .PHONY: lint
 
 fmt:
