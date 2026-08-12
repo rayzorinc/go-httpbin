@@ -149,6 +149,7 @@ func TestIndex(t *testing.T) {
 			assert.Contains(t, body, "go-httpbin", "body")
 			assert.Contains(t, body, prefix+"/get", "body")
 			assert.Contains(t, body, prefix+"/openapi.json", "body")
+			assert.Contains(t, body, prefix+"/swagger/", "body")
 		})
 
 		t.Run("not found"+prefix, func(t *testing.T) {
@@ -209,6 +210,72 @@ func TestOpenAPI(t *testing.T) {
 			req := newTestRequest(t, "POST", app.URL(prefix+"/openapi.json"), nil)
 			resp := mustDoRequest(t, app, req)
 			assert.StatusCode(t, resp, http.StatusMethodNotAllowed)
+		})
+	}
+}
+
+func TestSwaggerUI(t *testing.T) {
+	t.Parallel()
+	for _, prefix := range []string{"", "/test-prefix"} {
+		t.Run("index"+prefix, func(t *testing.T) {
+			t.Parallel()
+			app := setupTestApp(t, WithPrefix(prefix))
+			for _, path := range []string{"/swagger/", "/swagger/index.html"} {
+				req := newTestRequest(t, "GET", app.URL(prefix+path), nil)
+				resp := mustDoRequest(t, app, req)
+
+				assert.StatusCode(t, resp, http.StatusOK)
+				assert.ContentType(t, resp, htmlContentType)
+				body := must.ReadAll(t, resp.Body)
+				assert.Contains(t, body, `id="swagger-ui"`, "body")
+				assert.Contains(t, body, "./swagger-ui.css", "body")
+				assert.Contains(t, body, "./swagger-ui-bundle.js", "body")
+				assert.Contains(t, body, "./swagger-ui-standalone-preset.js", "body")
+				assert.Contains(t, body, "./swagger-initializer.js", "body")
+				assert.Header(t, resp, "Content-Security-Policy", swaggerContentSecurityPolicy)
+			}
+		})
+
+		t.Run("redirect"+prefix, func(t *testing.T) {
+			t.Parallel()
+			app := setupTestApp(t, WithPrefix(prefix))
+			req := newTestRequest(t, "GET", app.URL(prefix+"/swagger"), nil)
+			resp := mustDoRequest(t, app, req)
+
+			assert.StatusCode(t, resp, http.StatusPermanentRedirect)
+			assert.Header(t, resp, "Location", prefix+"/swagger/")
+		})
+
+		t.Run("schema alias"+prefix, func(t *testing.T) {
+			t.Parallel()
+			app := setupTestApp(t, WithPrefix(prefix))
+			getBody := func(path string) string {
+				t.Helper()
+				req := newTestRequest(t, "GET", app.URL(prefix+path), nil)
+				resp := mustDoRequest(t, app, req)
+				assert.StatusCode(t, resp, http.StatusOK)
+				assert.ContentType(t, resp, openAPIContentType)
+				return must.ReadAll(t, resp.Body)
+			}
+
+			assert.DeepEqual(t, getBody("/swagger/doc.json"), getBody("/openapi.json"), "schema alias differs")
+		})
+
+		t.Run("assets"+prefix, func(t *testing.T) {
+			t.Parallel()
+			app := setupTestApp(t, WithPrefix(prefix))
+			for _, path := range []string{
+				"/swagger/swagger-ui.css",
+				"/swagger/swagger-ui-bundle.js",
+				"/swagger/swagger-initializer.js",
+			} {
+				req := newTestRequest(t, "GET", app.URL(prefix+path), nil)
+				resp := mustDoRequest(t, app, req)
+				assert.StatusCode(t, resp, http.StatusOK)
+				if body := must.ReadAll(t, resp.Body); len(body) == 0 {
+					t.Fatalf("empty Swagger UI asset %q", path)
+				}
+			}
 		})
 	}
 }

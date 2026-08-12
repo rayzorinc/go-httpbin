@@ -159,6 +159,8 @@ var _ http.Handler = &HTTPBin{}
 
 // Handler returns an http.Handler that exposes all HTTPBin endpoints
 func (h *HTTPBin) Handler() http.Handler {
+	// This mux records the same patterns it registers, allowing the OpenAPI
+	// document to be derived from the live route table instead of a second list.
 	mux := newOpenAPIMux()
 
 	// Endpoints restricted to specific methods
@@ -231,6 +233,7 @@ func (h *HTTPBin) Handler() http.Handler {
 	// existing httpbin endpoints that we do not support
 	mux.HandleFunc("/brotli", notImplementedHandler)
 
+	// Generate the document only after every API endpoint has been registered.
 	mux.registerOpenAPI(h.prefix)
 
 	// Apply global middleware

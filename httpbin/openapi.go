@@ -34,18 +34,29 @@ func (m *openAPIMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *openAPIMux) HandleFunc(pattern string, handler http.HandlerFunc) {
+	// Keep route registration as the source of truth for the generated schema.
 	m.patterns = append(m.patterns, pattern)
+	m.handleFunc(pattern, handler)
+}
+
+func (m *openAPIMux) handleFunc(pattern string, handler http.HandlerFunc) {
+	// Documentation routes use this path so they are served by the same mux
+	// without appearing as go-httpbin API operations in the schema.
 	m.mux.HandleFunc(pattern, handler)
 }
 
 func (m *openAPIMux) registerOpenAPI(prefix string) {
 	const pattern = "GET /openapi.json"
 	var body []byte
-	m.HandleFunc(pattern, func(w http.ResponseWriter, _ *http.Request) {
+	serveOpenAPI := func(w http.ResponseWriter, _ *http.Request) {
 		writeResponse(w, http.StatusOK, openAPIContentType, body)
-	})
+	}
+	// Include the schema endpoint in its own document, then freeze the document
+	// before adding the Swagger UI routes that consume it.
+	m.HandleFunc(pattern, serveOpenAPI)
 	body = buildOpenAPIDocument(prefix, m.patterns)
 	m.patterns = nil
+	m.registerSwaggerUI(prefix, serveOpenAPI)
 }
 
 func buildOpenAPIDocument(prefix string, patterns []string) []byte {
@@ -95,6 +106,8 @@ func buildOpenAPIDocument(prefix string, patterns []string) []byte {
 }
 
 func openAPIMethods(method string) []string {
+	// The preflight and autohead middleware make OPTIONS available for every
+	// endpoint and HEAD available wherever GET is registered.
 	switch method {
 	case "":
 		return openAPIAnyMethods
@@ -113,6 +126,8 @@ func parseServeMuxPattern(pattern string) (method, path string) {
 		path = method
 		method = ""
 	}
+	// OpenAPI has no equivalents for ServeMux's end marker or variadic wildcard,
+	// so express both using the corresponding OpenAPI path template.
 	path = strings.TrimSuffix(path, "{$}")
 	path = strings.ReplaceAll(path, "...}", "}")
 	return strings.ToLower(method), path
