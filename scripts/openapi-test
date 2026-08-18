@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+binary="$1"
+host=127.0.0.1
+port=18080
+base_url="http://${host}:${port}"
+tmp_dir="$(mktemp -d)"
+
+cleanup() {
+	if [ -n "${server_pid:-}" ]; then
+		kill "$server_pid" 2>/dev/null || true
+		wait "$server_pid" 2>/dev/null || true
+	fi
+	rm -rf "$tmp_dir"
+}
+trap cleanup EXIT
+
+HYPOTHESIS_STORAGE_DIRECTORY="$tmp_dir/hypothesis" \
+	"$binary" -host "$host" -port "$port" -log-level OFF >"$tmp_dir/server.log" 2>&1 &
+server_pid=$!
+
+for _ in $(seq 1 20); do
+	if curl --fail --silent "$base_url/openapi.json" >/dev/null; then
+		break
+	fi
+	sleep 1
+done
+curl --fail --silent --show-error "$base_url/openapi.json" >/dev/null
+
+HYPOTHESIS_STORAGE_DIRECTORY="$tmp_dir/hypothesis" \
+	uvx --from schemathesis==4.24.3 schemathesis run "$base_url/openapi.json" \
+		--url "$base_url" \
+		--phases=coverage \
+		--checks=all \
+		--max-examples=1 \
+		--workers=1 \
+		--request-timeout=2 \
+		--generation-deterministic \
+		--include-path /get \
+		--include-path /post \
+		--include-path /put \
+		--include-path /patch \
+		--include-path /delete \
+		--include-path /anything \
+		--include-path '/anything/{anything}' \
+		--include-path /openapi.json \
+		--no-color

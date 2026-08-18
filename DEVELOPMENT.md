@@ -88,6 +88,17 @@ after adding, removing, or changing a route:
 Run `make openapi-check` to verify that the checked-in document is current
 without modifying it. This check is also included in `make lint`.
 
+### Contract test
+
+Run the bounded [Schemathesis][] contract test against a locally started
+go-httpbin instance:
+
+    make openapi-test
+
+The initial suite covers representative parameter-free operations. It is kept
+separate from the unit test suite while the OpenAPI document gains the parameter
+constraints and response details needed for exhaustive contract testing.
+
 
 ## Docker images
 
@@ -123,3 +134,4 @@ linux/arm64 architectures.
 [Release]: /.github/workflows/release.yaml
 [Codecov]: https://app.codecov.io/gh/mccutchen/go-httpbin
 [Autobahn Testsuite]: https://github.com/crossbario/autobahn-testsuite
+[Schemathesis]: https://schemathesis.readthedocs.io/

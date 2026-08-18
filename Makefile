@@ -86,6 +86,10 @@ openapi-check:
 	diff -u $(OPENAPI_PATH) "$$tmp"
 .PHONY: openapi-check
 
+openapi-test: build
+	./scripts/openapi-test $(DIST_PATH)/go-httpbin
+.PHONY: openapi-test
+
 # =============================================================================
 # linting/formatting
 # =============================================================================
